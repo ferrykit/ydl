@@ -26,15 +26,13 @@ when WebDAV / `rclone` stop working, or when the web UI gives you no "download f
 - Mobile-friendly UI, download history charts, installer that can even install Docker for you.
 
 ## Install
-Requirements: Linux with `sudo`/root. Docker is installed by the installer if missing.
+Requirements: a Linux server with `sudo`/root and `git` (`sudo apt-get install -y git`). Docker is installed by the installer if missing.
+Log in to the server over ssh and run two commands:
 ```bash
-git clone https://github.com/ferrykit/ydl ydl && cd ydl
-./install.sh        # a few questions, every one has a sensible default (press Enter)
-```
-Faster, without building the image locally (a public image from GitHub Container Registry):
-```bash
+git clone https://github.com/ferrykit/ydl && cd ydl
 YDL_IMAGE=ghcr.io/ferrykit/ydl:latest ./install.sh
 ```
+The installer asks a few questions (every one has a sensible default, press Enter), pulls the ready-made image and starts the service.
 At the end the installer prints the URL to open (and the password it generated). Day-to-day: `./ydl help`
 (`status`, `logs`, `update`, `password`, `https ip|domain NAME|off`, `slots N`, `info`).
 
