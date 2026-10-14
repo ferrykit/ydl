@@ -12,6 +12,9 @@
 Yandex.Disk to your server. Handy when the desktop client stalls or went paid-only (free desktop sync ended on 3 June 2026),
 when WebDAV / `rclone` stop working, or when the web UI gives you no "download folder" button.
 
+![ydl main page: speed, slots, progress, per-link queue (demo data)](docs/screenshot.png)
+*Main page (demo data in the screenshot).*
+
 *The web interface is currently in Russian only.*
 
 ## Features
