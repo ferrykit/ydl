@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Выгрузка Яндекс.Диска</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("ydl-theme")||"auto"}catch(e){}</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%276%27 fill=%27%230a8f6f%27/%3E%3Cpath d=%27M12 5v9m0 0l-3-3m3 3l3-3M7 18h10%27 stroke=%27white%27 stroke-width=%272%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2efe7;--bg-glow:rgba(10,143,111,.10);--bg-glow2:rgba(37,99,235,.07);
+  --surface:#fffdf8;--surface2:#f8f5ec;--line:#e2dccd;--line2:#d3ccba;
+  --text:#16202b;--muted:#5d6a79;--faint:#8a95a3;
+  --accent:#0a8f6f;--accent-soft:rgba(10,143,111,.12);--accent-ink:#fff;
+  --blue:#2563eb;--blue-soft:rgba(37,99,235,.10);
+  --warn:#b45309;--warn-soft:rgba(180,83,9,.11);
+  --bad:#c2334a;--bad-soft:rgba(194,51,74,.10);
+  --shadow:0 1px 0 rgba(20,30,40,.04),0 10px 30px -18px rgba(20,30,40,.25);
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Onest',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
+:root[data-theme=dark]{
+  --bg:#0a0d12;--bg-glow:rgba(52,224,176,.07);--bg-glow2:rgba(106,167,255,.06);
+  --surface:#111620;--surface2:#151b27;--line:#222b3a;--line2:#2d384b;
+  --text:#e7ebf3;--muted:#8d97ab;--faint:#5c677c;
+  --accent:#34e0b0;--accent-soft:rgba(52,224,176,.12);--accent-ink:#052a1f;
+  --blue:#6aa7ff;--blue-soft:rgba(106,167,255,.12);
+  --warn:#ffb454;--warn-soft:rgba(255,180,84,.12);
+  --bad:#ff6b7a;--bad-soft:rgba(255,107,122,.12);
+  --shadow:0 1px 0 rgba(255,255,255,.02) inset,0 14px 34px -20px rgba(0,0,0,.7);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme]),:root[data-theme=auto]{
+  --bg:#0a0d12;--bg-glow:rgba(52,224,176,.07);--bg-glow2:rgba(106,167,255,.06);
+  --surface:#111620;--surface2:#151b27;--line:#222b3a;--line2:#2d384b;
+  --text:#e7ebf3;--muted:#8d97ab;--faint:#5c677c;
+  --accent:#34e0b0;--accent-soft:rgba(52,224,176,.12);--accent-ink:#052a1f;
+  --blue:#6aa7ff;--blue-soft:rgba(106,167,255,.12);
+  --warn:#ffb454;--warn-soft:rgba(255,180,84,.12);
+  --bad:#ff6b7a;--bad-soft:rgba(255,107,122,.12);
+  --shadow:0 1px 0 rgba(255,255,255,.02) inset,0 14px 34px -20px rgba(0,0,0,.7);
+}}
+*{box-sizing:border-box}
+html{color-scheme:light dark}
+html[data-theme=dark]{color-scheme:dark}html[data-theme=light]{color-scheme:light}
+body{margin:0;min-height:100vh;color:var(--text);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;
+  background:radial-gradient(1100px 520px at 8% -12%,var(--bg-glow),transparent 60%),radial-gradient(900px 520px at 104% -6%,var(--bg-glow2),transparent 55%),var(--bg);}
+.shell{max-width:1180px;margin:0 auto;padding:22px 20px 70px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.mut{color:var(--muted)}.faint{color:var(--faint)}
+button{font:inherit;cursor:pointer}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- шапка ---------- */
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+.brand{display:flex;align-items:center;gap:12px;flex:1;min-width:240px}
+.mark{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,var(--accent),var(--blue));color:var(--accent-ink);box-shadow:0 8px 20px -10px var(--accent)}
+.mark svg{width:20px;height:20px}
+h1{font-size:19px;line-height:1.2;margin:0;font-weight:650;letter-spacing:-.01em}
+.sub{font-size:12.5px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:8px}
+.ld{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 var(--accent);animation:pulse 2s infinite;flex:none}
+.ld.off{background:var(--bad);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);background:var(--surface);color:var(--text);border-radius:10px;padding:8px 14px;font-weight:550;font-size:14px;transition:.15s;box-shadow:var(--shadow)}
+.btn{text-decoration:none;white-space:nowrap}
+.btn:hover{border-color:var(--accent);transform:translateY(-1px);text-decoration:none}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.sm{padding:5px 11px;font-size:13px;border-radius:8px;box-shadow:none}
+.btn.warn{color:var(--warn)}.btn.bad{color:var(--bad)}
+.btn svg{width:15px;height:15px}
+.ib{width:30px;height:30px;padding:0;justify-content:center;border-radius:8px;box-shadow:none;color:var(--muted)}
+.ib svg{width:16px;height:16px}.ib:hover{color:var(--text)}.ib.bad:hover{color:var(--bad);border-color:var(--bad)}
+.acts .end{margin-left:auto;display:flex;gap:6px}
+
+/* ---------- панели ---------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)}
+.panel h3{margin:0 0 12px;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.add{margin-bottom:16px}
+.arow{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:8px;margin-bottom:8px}
+.arow input{width:100%;min-width:0;border:1px solid var(--line2);border-radius:10px;background:var(--surface2);color:var(--text);padding:10px 12px;font:13px/1.4 var(--mono)}
+.arow input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.arow .aerr{grid-column:1/-1;font-size:12.5px;color:var(--bad);margin-top:-2px}
+.arow .aerr:empty{display:none}
+.arow.bad .al{border-color:var(--bad)}
+.addmsg{font-size:13.5px;margin-top:4px;color:var(--muted)}.addmsg.bad{color:var(--bad)}
+.hint{font-size:13px;color:var(--muted);margin:0 0 10px}
+.hint b{color:var(--text);font-weight:600}
+
+/* ---------- KPI ---------- */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:14px}
+.kpi{position:relative;overflow:hidden}
+.boot .kpi{animation:rise .55s cubic-bezier(.2,.8,.2,1) both}
+.boot .kpi:nth-child(2){animation-delay:.06s}.boot .kpi:nth-child(3){animation-delay:.12s}.boot .kpi:nth-child(4){animation-delay:.18s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.kpi .lab{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kpi .val{font-family:var(--mono);font-weight:700;font-size:34px;line-height:1.1;margin:8px 0 2px;letter-spacing:-.02em}
+.kpi .val small{font-size:14px;font-weight:500;color:var(--muted);margin-left:5px;letter-spacing:0}
+.kpi .cap{font-size:12.5px;color:var(--muted)}
+.spark{display:block;width:100%;height:46px;margin-top:8px}
+.slots{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin-top:12px}
+.slots i{height:26px;border-radius:6px;background:var(--surface2);border:1px solid var(--line);transition:.3s}
+.slots i.on{background:var(--accent);border-color:transparent;box-shadow:0 0 14px -2px var(--accent);animation:blink 2.4s ease-in-out infinite}
+.slots i.on:nth-child(2n){animation-delay:.4s}.slots i.on:nth-child(3n){animation-delay:.9s}
+@keyframes blink{50%{opacity:.62}}
+.ringwrap{display:flex;align-items:center;gap:16px}
+.ring{width:84px;height:84px;flex:none}
+.ring .bg{stroke:var(--line2);fill:none}.ring .fg{stroke:var(--accent);fill:none;stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1)}
+.ring text{font-family:var(--mono);font-weight:700;font-size:19px;fill:var(--text)}
+.kpi.problem .val{color:var(--warn)}.kpi.problem.ok .val{color:var(--accent)}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:550;background:var(--surface2);border:1px solid var(--line);color:var(--muted)}
+.pill.warn{color:var(--warn);background:var(--warn-soft);border-color:transparent}
+.pill.bad{color:var(--bad);background:var(--bad-soft);border-color:transparent}
+.pill.ok{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+.pill.info{color:var(--blue);background:var(--blue-soft);border-color:transparent}
+.pill.pick{color:var(--accent-ink);background:var(--accent);border-color:transparent}
+.pill.live{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+
+/* ---------- графики ---------- */
+.grid2{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-bottom:14px}
+.bars{display:flex;align-items:flex-end;justify-content:flex-start;gap:9px;height:130px;padding-top:6px}
+.bar{flex:1 1 0;max-width:74px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.bar .col{width:100%;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 35%,transparent));min-height:3px;transition:height .6s}
+.bar .st{font-family:var(--mono);font-size:10.5px;color:var(--bad);height:15px;line-height:15px}
+.bar .hr{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px}
+.bar .v{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:3px;white-space:nowrap}
+.dcrow{margin:0 0 13px}.dcrow:last-child{margin:0}
+.dchead{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:5px}
+.dchead b{font-family:var(--mono);font-size:14px;letter-spacing:.04em}
+.dcbar{display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--surface2);border:1px solid var(--line)}
+.dcbar i{display:block;height:100%;transition:width .6s}.dcbar .g{background:var(--accent)}.dcbar .r{background:var(--bad)}
+.empty{color:var(--faint);font-size:13px;padding:18px 0;text-align:center}
+
+/* ---------- «не качаются» ---------- */
+.wait{margin-bottom:14px;border-color:color-mix(in srgb,var(--warn) 35%,var(--line));background:linear-gradient(180deg,var(--warn-soft),var(--surface) 70%)}
+.wait ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.wait li{display:flex;gap:10px;align-items:baseline;font-size:13.5px}
+.wait li b{font-weight:600}.wait li span{color:var(--muted)}
+
+/* ---------- ссылки ---------- */
+details.grp{margin:20px 0 0}
+details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:4px 2px 12px;user-select:none}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary .chev{width:16px;height:16px;transition:transform .2s;color:var(--muted)}
+details.grp[open]>summary .chev{transform:rotate(90deg)}
+.gtitle{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.gmeta{font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+.gh{font-size:13px;color:var(--muted);margin:-4px 0 12px 26px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:12px}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px 14px 20px;box-shadow:var(--shadow);overflow:hidden}
+.boot .card{animation:rise .45s both}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--line2)}
+.card.s-live::before{background:var(--accent)}.card.s-ok::before{background:var(--accent)}
+.card.s-warn::before{background:var(--warn)}.card.s-bad::before{background:var(--bad)}
+.card.s-info::before,.card.s-pick::before{background:var(--blue)}
+.card .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.card .nm{font-weight:650;font-size:15.5px;line-height:1.3;word-break:break-word;letter-spacing:-.005em}
+.card .pr{margin:12px 0 7px;height:7px;border-radius:99px;background:var(--surface2);border:1px solid var(--line);overflow:hidden}
+.card .pr i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,var(--blue)));transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.card.s-warn .pr i{background:var(--warn)}
+.kv{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--muted)}
+.kv b{font-family:var(--mono);color:var(--text);font-weight:600}
+.notes{display:grid;gap:5px;margin-top:9px;font-size:13px}
+.n-warn{color:var(--warn)}.n-bad{color:var(--bad)}.n-ok{color:var(--accent)}.n-mut{color:var(--muted)}.n-info{color:var(--blue)}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px dashed var(--line2);border-radius:8px;padding:2px 9px;font-size:12.5px;color:var(--muted)}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line2);border-top-color:var(--blue);border-radius:50%;animation:rot .9s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* ---------- журнал ---------- */
+.log{margin-top:22px}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.65 var(--mono);color:var(--muted);max-height:260px;overflow:auto}
+
+/* ---------- окно выбора файлов ---------- */
+#md{display:none;position:fixed;inset:0;z-index:50;background:rgba(5,8,12,.62);backdrop-filter:blur(6px);padding:3vh 14px}
+#md .dlg{max-width:820px;margin:0 auto;max-height:94vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7);animation:rise .3s both}
+.dlg .dh{padding:18px 20px 12px;border-bottom:1px solid var(--line)}
+.dlg .dh h2{margin:0;font-size:17px;font-weight:650}
+.dlg .tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.dlg input[type=search]{flex:1;min-width:160px;border:1px solid var(--line2);background:var(--surface2);color:var(--text);border-radius:9px;padding:7px 11px;font:inherit}
+.dlg .tree{padding:10px 20px;overflow:auto;flex:1}
+.tree details{margin-left:20px}.tree .f{margin-left:36px}.tree>.f{margin-left:20px}.tree>details{margin-left:0}
+.tree summary{cursor:pointer;padding:3px 0}.tree label{cursor:pointer;display:inline-flex;gap:8px;align-items:baseline}
+.tree .row{padding:2px 0}
+.tree input{accent-color:var(--accent);transform:translateY(2px)}
+.tree .sz{font-family:var(--mono);font-size:12px;color:var(--faint)}
+.tree .badf{color:var(--warn);font-size:12px}
+.dlg .df{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.dlg .df .sum{font-family:var(--mono);font-size:13px;color:var(--muted)}
+
+.lk{background:none;border:0;color:var(--accent);font:inherit;font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;padding:0;cursor:pointer}
+.lk:hover{text-decoration:underline}
+.kpi .lab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lf{margin:18px 0 -6px}.lf input{width:100%;max-width:340px;border:1px solid var(--line2);background:var(--surface);color:var(--text);border-radius:10px;padding:8px 12px;font:inherit;box-shadow:var(--shadow)}
+#hm{display:none;position:fixed;inset:0;z-index:50;background:rgba(5,8,12,.62);backdrop-filter:blur(6px);padding:3vh 14px}
+#hm .dlg{max-width:1120px;margin:0 auto;max-height:94vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7);animation:rise .3s both;overflow:auto}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.seg button{border:1px solid var(--line2);background:var(--surface2);color:var(--text);border-radius:9px;padding:5px 12px;font-weight:550;font-size:13px}
+.seg button.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.hsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:14px 20px 4px}
+@media (max-width:700px){.hsum{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hs{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+.hs .lab{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.hs .v{font-size:19px;font-weight:700;margin-top:3px}
+.chartbox{position:relative;padding:6px 14px 10px}
+#hc{width:100%;height:auto;display:block}
+#hc text{font-family:var(--mono);font-size:11px;fill:var(--faint)}
+#htip{position:absolute;pointer-events:none;display:none;background:var(--surface2);border:1px solid var(--line2);border-radius:10px;padding:8px 11px;font-size:12.5px;line-height:1.55;box-shadow:var(--shadow);white-space:nowrap;z-index:3}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:0 20px 12px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+/* ---------- очередь и слоты ---------- */
+.q h3 .num{text-transform:none;letter-spacing:0}
+.slotgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:760px){.slotgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sl{border:1px solid var(--line);border-left:4px solid var(--line2);background:var(--surface2);border-radius:10px;padding:7px 10px;min-height:68px;overflow:hidden}
+.sl.recv{border-left-color:var(--accent);background:var(--accent-soft)}
+.sl.conn{border-left-color:var(--warn);background:var(--warn-soft)}
+.sl.quiet{border-left-color:var(--bad);background:var(--bad-soft)}
+.sl .a{font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl .b{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl .c{font-size:11.5px;font-family:var(--mono);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl.recv .c{color:var(--accent)}.sl.conn .c{color:var(--warn)}.sl.quiet .c{color:var(--bad)}
+.qh{margin:16px 0 4px;font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.qlist{max-height:430px;overflow:auto;border-top:1px solid var(--line);scrollbar-width:thin}
+.qrow{padding:9px 6px 9px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(110px,200px) 1fr;gap:4px 16px;align-items:start}
+.qrow b.nm{font-weight:650;overflow-wrap:anywhere;line-height:1.3}
+.qm{display:grid;gap:5px;min-width:0}
+.qinfo{font-size:12.5px;display:flex;flex-wrap:wrap;gap:2px 14px;align-items:baseline}
+.qbar{display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--surface2);border:1px solid var(--line)}
+.qbar i{display:block;height:100%;transition:width .6s}
+.qd{background:color-mix(in srgb,var(--accent) 50%,var(--surface2))}.qr{background:var(--accent)}.qc{background:var(--warn)}.qq{background:var(--blue)}
+.qw{background:repeating-linear-gradient(45deg,var(--faint) 0 4px,transparent 4px 8px)}.qo{background:var(--line2)}
+.qleg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted)}
+.qleg i.sq{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.qst{font-size:13px}
+.help{margin-top:12px;font-size:13px;color:var(--muted)}
+.help summary{cursor:pointer;color:var(--accent);font-weight:600}
+.help dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:6px 14px}
+.help dt{font-weight:650;color:var(--text)}.help dd{margin:0}
+.gdn{margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--bad-soft);color:var(--bad);font-size:13.5px}
+.slots i.on.conn{background:var(--warn);box-shadow:0 0 14px -2px var(--warn)}
+.slots i.on.quiet{background:var(--bad);box-shadow:0 0 14px -2px var(--bad)}
+.card{display:flex;flex-direction:column}
+.card .notes{min-height:4.7em;align-content:start;margin-bottom:12px}
+.card .acts{margin-top:auto}
+.grid2>*,.cards>*,.kpis>*,.panel{min-width:0}
+@media (max-width:960px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:520px){
+ .kpis{grid-template-columns:minmax(0,1fr)}.cards{grid-template-columns:minmax(0,1fr)}.shell{padding:14px 10px 60px}
+ .brand{min-width:0;flex:1 1 100%}.panel{padding:14px 14px}
+ .panel h3{flex-wrap:wrap;gap:4px 10px}.panel h3 .faint{white-space:normal}
+ .dchead{flex-wrap:wrap;gap:2px 10px}
+ .bars{gap:4px}.bar .v{font-size:9.5px}.bar .st{font-size:9.5px}
+ .qrow{grid-template-columns:minmax(0,1fr)}
+ .btn:not(.ib){padding:10px 14px}.btn.sm:not(.ib){padding:8px 12px}.btn.ib{min-width:40px;min-height:40px;justify-content:center}.seg button{padding:8px 12px}
+ #md,#hm{padding:0}#md .dlg,#hm .dlg{max-width:none;height:100%;max-height:100%;border-radius:0;border:0}
+ .dlg .dh,.dlg .df{padding:12px 14px}.dlg .tree{padding:8px 14px}.dlg input[type=search]{min-width:0}
+ .tree details{margin-left:12px}.tree .f{margin-left:24px}.tree>.f{margin-left:12px}
+ .hsum{padding:12px 14px 4px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body class="boot">
+<div class="shell">
+  <header class="top">
+    <div class="brand">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"/></svg></div>
+      <div><h1>Выгрузка Яндекс.Диска</h1><div class="sub"><i class="ld" id="live"></i><span id="sub">подключение…</span></div></div>
+    </div>
+    <a class="btn" href="/files/" title="Посмотреть, скачать и удалить то, что уже скачано на сервер"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Файлы</a>
+    <button class="btn" id="thb" onclick="cycleTheme()" title="Тема: авто → светлая → тёмная"></button>
+    <button class="btn" id="pp" onclick="pause()" title="Приостановить все загрузки. Уже скачанное не теряется: «Продолжить» докачает с того же места">Пауза</button>
+    <form method="post" action="/logout" id="lo" hidden style="margin:0"><button class="btn" type="submit" title="Выйти на этом устройстве (пароль потребуется снова)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>Выйти</button></form>
+    <button class="btn primary" onclick="toggleAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Добавить ссылки</button>
+  </header>
+
+  <section class="panel add" id="addp" hidden>
+    <h3>Новые ссылки</h3>
+    <p class="hint">Одна ссылка на папку в каждой строке. Пароль нужен, только если у ссылки он есть. Новая строка появляется сама. Сервис проверит ссылку и получит структуру папок, потом выберите, что скачивать.</p>
+    <div id="rows"></div>
+    <div id="addmsg" class="addmsg" role="status"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="add()">Добавить</button><button class="btn" onclick="toggleAdd()">Закрыть</button></div>
+  </section>
+
+  <section class="kpis" id="kpis"></section>
+  <section class="grid2">
+    <div class="panel" id="hours"></div>
+    <div class="panel" id="dcs"></div>
+  </section>
+  <section class="panel q" id="queue"></section>
+  <div class="lf"><input id="lf" type="search" placeholder="Фильтр ссылок по названию…" oninput="LF=this.value;load()"></div>
+  <main id="list"></main>
+  <section class="panel log"><h3>Журнал <span class="faint" style="text-transform:none;letter-spacing:0;font-weight:400">новые сверху</span></h3><pre id="log"></pre></section>
+</div>
+
+<div id="md"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="mh">
+  <div class="dh"><h2 id="mh">Что скачивать</h2>
+    <div class="mut" style="font-size:13px;margin-top:4px">Сними галочки с того, что качать не нужно. Исключённое можно вернуть позже: оно сразу встанет в очередь.</div>
+    <div class="tools"><input type="search" id="q" placeholder="Поиск по названию…" oninput="filterTree(this.value)">
+      <button class="btn sm" onclick="setAll(true)">Отметить всё</button><button class="btn sm" onclick="setAll(false)">Снять всё</button><button class="btn sm warn" onclick="uncheckBad()">Снять недоступные</button></div></div>
+  <div class="tree" id="mt"></div>
+  <div class="df"><span class="sum" id="msum"></span>
+    <span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="closeTree()">Отмена</button><button class="btn" onclick="saveTree(false)">Сохранить выбор</button><button class="btn primary" id="mgo" onclick="saveTree(true)">Сохранить и в работу</button></span></div>
+</div></div>
+
+<div id="hm"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="hh">
+  <div class="dh"><h2 id="hh">История загрузки</h2>
+    <div class="mut" style="font-size:13px;margin-top:4px">Журнал метрик пишется раз в 10 секунд и хранится 90 дней. Наведи курсор на график, чтобы увидеть значения.</div>
+    <div class="seg" id="seg"><button data-r="1h" onclick="loadHist('1h')">1 час</button><button data-r="6h" onclick="loadHist('6h')">6 часов</button><button data-r="24h" onclick="loadHist('24h')">24 часа</button><button data-r="7d" onclick="loadHist('7d')">7 дней</button><button data-r="30d" onclick="loadHist('30d')">30 дней</button><button data-r="all" onclick="loadHist('all')">Всё</button></div></div>
+  <div class="hsum" id="hsum"></div>
+  <div class="chartbox"><svg id="hc" viewBox="0 0 1000 430"></svg><div id="htip"></div></div>
+  <div class="legend"><span><i style="background:var(--accent)"></i>скорость, МБ/с (левая шкала)</span><span><i style="background:var(--blue)"></i>занятые слоты (правая шкала)</span><span><i style="background:var(--accent);opacity:.7"></i>файлов скачано (нижняя полоса, вверх)</span><span><i style="background:var(--bad);opacity:.7"></i>зависаний Яндекса (нижняя полоса, вниз)</span></div>
+  <div class="df"><span class="sum" id="hnote"></span><button class="btn" onclick="closeHist()">Закрыть</button></div>
+</div></div>
+
+<script>
+(()=>{const f=window.fetch;window.fetch=(u,o)=>{o=o||{};if((o.method||'GET').toUpperCase()!=='GET'){o.headers=Object.assign({'X-YDL':'1'},o.headers||{})}return f(u,o)}})();
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=b=>{b=b||0;if(b>=1073741824)return (b/1073741824).toFixed(2).replace('.',',')+' ГБ';if(b>=1048576)return (b/1048576).toFixed(b>=104857600?0:1).replace('.',',')+' МБ';if(b>=1024)return Math.round(b/1024)+' КБ';return b+' Б'};
+const pl=(n,f)=>{const a=Math.abs(n)%100,b=a%10;return (a>10&&a<20)?f[2]:b>1&&b<5?f[1]:b===1?f[0]:f[2]};
+const files=n=>n+' '+pl(n,['файл','файла','файлов']);
+const GO={a:true,p:true,f:false};let LF='',HR='24h';
+const TH=['auto','light','dark'];
+const THL={auto:'Авто',light:'Светлая',dark:'Тёмная'};
+const THI={auto:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+ light:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+ dark:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>'};
+function applyTheme(m){document.documentElement.dataset.theme=m;try{localStorage.setItem('ydl-theme',m)}catch(e){}$('thb').innerHTML=THI[m]+'<span>'+THL[m]+'</span>'}
+function cycleTheme(){const m=document.documentElement.dataset.theme||'auto';applyTheme(TH[(TH.indexOf(m)+1)%3])}
+const fmtEta=s=>{const m=Math.round(s/60);if(m<60)return m+' мин';const h=Math.floor(m/60);if(h<48)return h+' ч '+(m%60)+' мин';return Math.floor(h/24)+' дн '+(h%24)+' ч'};
+const nice=v=>{if(v<=0)return 1;const e=Math.pow(10,Math.floor(Math.log10(v))),f=v/e;return (f<=1?1:f<=2?2:f<=5?5:10)*e};
+const SP=[];let lastOk=0,TID='',busyAdd=false,QM={},HOLD=0,HELP=false;
+['kpis','hours','dcs','queue','list'].forEach(id=>{const el=$(id),d=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');
+ Object.defineProperty(el,'innerHTML',{configurable:true,get(){return d.get.call(this)},set(h){if(this._h!==h){this._h=h;d.set.call(this,h)}}})});
+document.addEventListener('pointerdown',()=>{HOLD=Date.now()+2500});
+const STH={'качаю':'Данные идут прямо сейчас.','в очереди':'Ждёт свободного слота скачивания.','ждём Яндекс':'Яндекс не отдаёт файлы этой ссылки (узлы хранилища молчат). Сервис сам повторит попытку позже, делать ничего не нужно.','ждём (есть ошибки)':'Часть файлов не скачалась из-за ошибок, сервис повторит их позже.'};
+const ST={'качаю':['live','Качается','s-live'],'в очереди':['','В очереди',''],'ждём Яндекс':['warn','Ждём Яндекс','s-warn'],'ждём (есть ошибки)':['warn','Повтор после ошибок','s-warn'],
+ 'проверка':['info','Проверка','s-info'],'листинг':['info','Обход папок','s-info'],'выбор файлов':['pick','Нужен выбор','s-pick'],'остановлено':['','Остановлено',''],'ошибка':['bad','Ошибка','s-bad'],'готово':['ok','Готово','s-ok']};
+
+function addRow(v){const d=document.createElement('div');d.className='arow';
+ d.innerHTML='<input class="al" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Ссылка на папку: https://disk.yandex.ru/d/…" aria-label="Ссылка"><input class="ap" type="text" autocomplete="off" spellcheck="false" placeholder="Пароль (если есть)" aria-label="Пароль ссылки"><div class="aerr"></div>';
+ if(v)d.querySelector('.al').value=v;$('rows').appendChild(d);return d}
+function ensureEmptyRow(){const r=$('rows').children;if(!r.length||r[r.length-1].querySelector('.al').value.trim())addRow()}
+$('rows').addEventListener('input',e=>{if(e.target.classList.contains('al')){e.target.closest('.arow').classList.remove('bad');ensureEmptyRow()}});
+$('rows').addEventListener('paste',e=>{
+ if(!e.target.classList||!e.target.classList.contains('al'))return;
+ const lines=(e.clipboardData.getData('text')||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ if(lines.length<2)return;e.preventDefault();
+ let row=e.target.closest('.arow');
+ lines.forEach(v=>{if(!row)row=addRow();row.querySelector('.al').value=v;row=row.nextElementSibling});
+ ensureEmptyRow()});
+function addMsg(t,bad){const m=$('addmsg');m.textContent=t;m.className='addmsg'+(bad?' bad':'')}
+async function add(){
+ const rows=[...document.querySelectorAll('#rows .arow')].map(r=>({r,url:r.querySelector('.al').value.trim(),pw:r.querySelector('.ap').value.trim()})).filter(x=>x.url);
+ if(!rows.length){addMsg('Вставьте хотя бы одну ссылку',true);return}
+ let res;try{const r=await fetch('/api/add',{method:'POST',body:JSON.stringify(rows.map(x=>({url:x.url,pw:x.pw})))});if(r.status===401){location.href='/login';return}res=(await r.json()).results}catch(e){addMsg('Не удалось отправить: нет связи со службой',true);return}
+ let added=0,had=0,bad=0;
+ res.forEach((x,i)=>{const row=rows[i].r;if(x.ok){x.status==='добавлена'?added++:had++;row.remove()}else{bad++;row.classList.add('bad');row.querySelector('.aerr').textContent=x.reason}});
+ ensureEmptyRow();
+ const parts=[];if(added)parts.push('добавлено: '+added);if(had)parts.push('уже были в списке: '+had);
+ if(bad){addMsg((parts.length?parts.join(', ')+'. ':'')+'Не принято: '+bad+' (отмечены красным, исправьте и нажмите «Добавить» ещё раз)',true)}
+ else{addMsg('');$('addp').hidden=true;$('rows').innerHTML='';addRow()}
+ load()}
+function toggleAdd(){const p=$('addp');p.hidden=!p.hidden;if(!p.hidden){if(!$('rows').children.length)addRow();addMsg('');$('rows').querySelector('.al').focus()}}
+async function pause(){await fetch('/api/pause',{method:'POST'});load()}
+async function rm(id){if(confirm('Убрать ссылку из списка? Скачанные файлы останутся на диске.')){await fetch('/api/remove?id='+id,{method:'POST'});load()}}
+async function act(a,id){await fetch('/api/'+a+'?id='+id,{method:'POST'});load()}
+async function retry(id){await fetch('/api/retry?id='+id,{method:'POST'});load()}
+
+function spark(arr,w,h){if(arr.length<2)return '';const mx=Math.max(1,...arr)*1.15,st=w/(arr.length-1);
+ const pts=arr.map((v,i)=>[i*st,h-2-(v/mx)*(h-6)]);const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+ return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="sg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".35"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><path d="${d} L${w} ${h} L0 ${h} Z" fill="url(#sg)"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`}
+function ring(p){const r=34,c=2*Math.PI*r,off=c*(1-Math.min(100,p)/100);
+ return `<svg class="ring" viewBox="0 0 84 84"><circle class="bg" cx="42" cy="42" r="${r}" stroke-width="8"/><circle class="fg" cx="42" cy="42" r="${r}" stroke-width="8" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 42 42)"/><text x="42" y="48" text-anchor="middle">${Math.round(p)}%</text></svg>`}
+
+function renderStats(t){
+ const sp=t.speed/1048576;SP.push(sp);if(SP.length>60)SP.shift();
+ const busy=t.slots_busy,tot=t.slots_total;
+ QM={};(t.queues||[]).forEach(q=>QM[q.id]=q);const SLS=t.slots||[];const nR=SLS.filter(x=>x&&x.state==='recv').length,nC=SLS.filter(x=>x&&x.state==='conn').length,nQ=SLS.filter(x=>x&&x.state==='quiet').length;
+ let sl='';for(let i=0;i<tot;i++){const x=SLS[i];sl+=`<i class="${x?'on '+x.state:''}" title="${x?esc(x.link+' — '+x.file):'свободен'}"></i>`}
+ const prob=t.stuck>0||t.bad_nodes.length>0;
+ const etaTxt=t.eta_s?('Осталось ≈ <b>'+fmtEta(t.eta_s)+'</b> (средняя за 6 ч: '+(t.rate6h/1048576).toFixed(2).replace('.',',')+' МБ/с)'):'Время до конца: пока мало данных или скорость близка к нулю';
+ const diskWarn=t.disk_total&&t.disk_free<60*1073741824;
+ document.title=(sp>0.05?'↓ '+sp.toFixed(1).replace('.',',')+' МБ/с · ':'')+Math.round(t.pct)+'% · Выгрузка Яндекс.Диска';
+ $('kpis').innerHTML=`
+ <div class="panel kpi"><div class="lab">Скорость<button class="lk" onclick="openHist()">История →</button></div><div class="val">${sp.toFixed(2).replace('.',',')}<small>МБ/с</small></div><div class="cap">за последние 15 секунд</div>${spark(SP,200,46)}</div>
+ <div class="panel kpi"><div class="lab">Слоты заняты</div><div class="val">${busy}<small>из ${tot}</small></div><div class="cap">данные идут: <b class="num">${nR}</b> · подключаются: <b class="num">${nC}</b>${nQ?' · замолчали: <b class="num">'+nQ+'</b>':''}</div><div class="slots">${sl}</div></div>
+ <div class="panel kpi"><div class="lab">Прогресс выбранного</div><div class="ringwrap">${ring(t.pct)}<div><div class="num" style="font-size:20px;font-weight:700">${fmt(t.bytes_done)}</div><div class="cap">из ${fmt(t.bytes_total)}</div><div class="cap">файлов: ${t.files_done} из ${t.files_total}</div></div></div><div class="cap" style="margin-top:10px">${etaTxt}</div><div class="cap ${diskWarn?'n-warn':''}"><span title="Папка загрузок: ${esc(t.disk_path)}">Свободно на диске загрузок:</span> <b class="num">${fmt(t.disk_free)}</b> из ${fmt(t.disk_total)}${diskWarn?' — мало места!':''}</div></div>
+ <div class="panel kpi problem ${prob?'':'ok'}"><div class="lab">Последняя попытка не удалась</div><div class="val">${t.stuck}<small>${pl(t.stuck,['файл','файла','файлов'])}</small></div><div class="cap">у них последняя попытка скачать не удалась. Из ${files(t.files_left)} оставшихся. Это не потеря: они в очереди, сервис пробует снова каждые 10–60 с. Узлов Яндекса на паузе: <b class="num">${t.bad_nodes.length}</b></div>
+   <div class="pills">${t.bad_nodes.slice(0,5).map(n=>`<span class="pill warn num">${esc(n.node.split('.')[0])}</span>`).join('')}${t.bad_nodes.length>5?`<span class="pill">+${t.bad_nodes.length-5}</span>`:''}${t.bad_nodes.length?'':'<span class="pill ok">всё отвечает</span>'}</div></div>`;
+
+ // часы
+ const h=t.hist.slice().reverse();const mx=Math.max(1,...h.map(x=>x.b));
+ $('hours').innerHTML=`<h3>Скачано по часам <span class="num faint" style="text-transform:none;letter-spacing:0">в этот час ${fmt(t.hour_bytes)} · за сутки ${fmt(t.day_bytes)}</span></h3>`+
+  (h.length?`<div class="bars">${h.map(x=>`<div class="bar" title="${esc(x.h)}: ${fmt(x.b)}, ${files(x.ok)}, зависаний ${x.st}"><div class="v">${x.b?fmt(x.b):''}</div><div class="col" style="height:${Math.max(2,x.b/mx*84)}px"></div><div class="st">${x.st?'⚠'+x.st:''}</div><div class="hr">${esc(x.h.slice(0,2))}</div></div>`).join('')}</div>`:'<div class="empty">Данные появятся после первых скачиваний</div>')+
+  `<div class="mut" style="font-size:12.5px;margin-top:10px">Файлов за сутки: <b class="num">${t.day_ok}</b> · зависаний: <b class="num">${t.day_stalls}</b> <span class="faint">(⚠ — зависания Яндекса в этот час)</span> · <button class="lk" onclick="openHist()">подробный график →</button></div>`;
+ // дата-центры
+ $('dcs').innerHTML=`<h3>Дата-центры Яндекса <span class="faint" style="text-transform:none;letter-spacing:0">по суффиксу узла</span></h3>`+
+  (t.dc&&t.dc.length?t.dc.map(d=>{const n=d.ok+d.bad,g=n?d.ok/n*100:0;return `<div class="dcrow"><div class="dchead"><b>${esc(d.dc)}</b><span class="mut num">${d.ok} удачно · ${d.bad} сбоев · ${Math.round(g)}%</span></div><div class="dcbar"><i class="g" style="width:${g}%"></i><i class="r" style="width:${100-g}%"></i></div></div>`}).join(''):'<div class="empty">Пока нет данных</div>');
+ renderQueue(t);
+}
+
+const hhmm=ts=>new Date(ts*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+function renderQueue(t){
+ const SLS=t.slots||[],Q=t.queues||[];
+ const nR=SLS.filter(x=>x&&x.state==='recv').length,nC=SLS.filter(x=>x&&x.state==='conn').length;
+ const tiles=SLS.map((x,i)=>{
+  if(!x)return `<div class="sl"><div class="a faint">Слот ${i+1}</div><div class="b faint">свободен</div></div>`;
+  const lab=x.state==='recv'?'получаю · '+fmt(x.got)+(x.size?' из '+fmt(x.size):''):x.state==='quiet'?'данные встали · '+x.age+' с':'подключаюсь · '+x.age+' с';
+  return `<div class="sl ${x.state}" title="${esc(x.link+' — '+x.file)}"><div class="a">${esc(x.link)}</div><div class="b">${esc(x.file)}</div><div class="c">${lab}${x.node?' · '+esc(x.node):''}</div></div>`}).join('');
+ const ld=t.disk_low?`<div class="gdn" style="border-color:var(--bad)"><b>Мало места на диске.</b> Свободно ${fmt(t.disk_free)}, меньше установленного минимума ${fmt(t.disk_min)}: загрузка приостановлена, чтобы не забить диск. Освободите место (скопируйте скачанное и удалите его в разделе «Файлы»), и загрузка продолжится сама.</div>`:'';
+ const gd=t.guard&&t.guard.active?(t.guard.soft?`<div class="gdn"><b>Временный сбой на стороне Яндекса.</b> Он ответил «${esc(t.guard.reason)}» (ошибка 503: сервис Яндекса не справляется, это не блокировка). Все слоты ненадолго на паузе до <b class="num">${hhmm(t.guard.until)}</b> и потом продолжат сами. Такое случается регулярно, делать ничего не нужно.</div>`:`<div class="gdn"><b>Защита от блокировки включена.</b> Яндекс просит притормозить: «${esc(t.guard.reason)}». Все слоты на паузе до <b class="num">${hhmm(t.guard.until)}</b>. Если он ответит так снова, пауза станет вдвое длиннее (до часа). Делать ничего не нужно.</div>`):'';
+ const rows=Q.map(q=>{
+  const T=Math.max(1,q.total),w=v=>(v/T*100).toFixed(2)+'%';
+  const at=q.resume_at>Date.now()/1000?q.resume_at:q.next_at;
+  let st;
+  if(q.recv>0)st=`<b class="n-ok">Качается</b> <span class="mut">данные идут по ${q.recv} ${pl(q.recv,['файлу','файлам','файлам'])}${q.conn?', ещё '+q.conn+' подключаются':''}</span>`;
+  else if(q.conn>0)st=`<b class="n-info">Подключаюсь</b> <span class="mut">запрос к Яндексу отправлен, данных пока нет (${q.conn} ${pl(q.conn,['попытка','попытки','попыток'])})</span>`;
+  else if(q.ready>0)st=`<b>В очереди</b> <span class="mut">ждёт свободный слот</span>`;
+  else if(q.cooling>0)st=`<b class="n-warn">Ждём Яндекс</b> <span class="mut">он не отдаёт файлы этой ссылки${at?', следующая попытка в '+hhmm(at):''}. Ничего делать не нужно</span>`;
+  else st=`<span class="mut">${esc(q.status)}</span>`;
+  const seg=[['qd',q.done,'скачано'],['qr',q.recv,'получают данные'],['qc',q.conn,'подключаются'],['qq',q.ready,'ждут слота'],['qw',q.cooling,'ждут повтора'],['qo',q.other,'прочее']];
+  return `<div class="qrow"><b class="nm">${esc(q.name)}</b><div class="qm"><div class="qbar">${seg.map(([c,v,n])=>v?`<i class="${c}" style="width:${w(v)}" title="${n}: ${v}"></i>`:'').join('')}</div>
+   <div class="qinfo"><span class="qst">${st}</span><span class="qleg">${seg.filter(x=>x[1]).map(([c,v,n])=>`<span><i class="sq ${c}"></i>${n} <b class="num">${v}</b></span>`).join('')}</span></div></div></div>`}).join('');
+ const ol=$('queue').querySelector('.qlist'),sc=ol?ol.scrollTop:0;
+ $('queue').innerHTML=`<h3>Очередь и слоты <span class="num faint">получают данные: ${nR} · подключаются: ${nC} · свободно: ${t.slots_total-SLS.filter(Boolean).length}</span></h3>
+  ${ld}${gd}<div class="slotgrid">${tiles}</div>
+  <div class="qh">Очередь по ссылкам: какая часть файлов в каком состоянии</div>
+  <div class="qlist">${rows||'<div class="empty">Нет ссылок в работе</div>'}</div>
+  <details class="help" ${HELP?'open':''} ontoggle="HELP=this.open"><summary>Что значат статусы</summary><dl>
+   <dt>Качается</dt><dd>данные от Яндекса идут прямо сейчас.</dd>
+   <dt>Подключаюсь</dt><dd>сервис запросил файл у Яндекса и ждёт ответа. Данных ещё нет: это попытка, а не скачивание. Если за 30 секунд ничего не пришло, попытка считается зависанием.</dd>
+   <dt>Данные встали</dt><dd>соединение есть, но байты перестали приходить (слот красный).</dd>
+   <dt>В очереди</dt><dd>файл готов к скачиванию и ждёт свободного слота.</dd>
+   <dt>Ждёт повтора</dt><dd>прошлая попытка зависла, файл отдыхает; пауза растёт с каждым сбоем (до часа).</dd>
+   <dt>Защита от блокировки</dt><dd>если Яндекс отвечает 429 (просит притормозить) или показывает капчу, все слоты сами встают на паузу: 1 минута, при повторе вдвое дольше, максимум час. Ответ 503 это сбой на стороне Яндекса, а не блокировка: пауза всего 30 секунд и без нарастания. Служебные запросы к Яндексу идут не чаще 4 в секунду.</dd>\n   <dt>Мало места</dt><dd>если на диске загрузок свободно меньше минимума (по умолчанию 2 ГБ, настраивается через <code>YDL_MIN_FREE_GB</code>), загрузка сама приостанавливается и продолжится, когда место появится.</dd>\n   <dt>Ждём Яндекс</dt><dd>все оставшиеся файлы ссылки сейчас на больных узлах хранилища или несколько попыток подряд зависли. Слоты уходят к другим ссылкам, а эта ссылка сама повторит позже. Делать ничего не нужно.</dd></dl></details>`;
+ const nl=$('queue').querySelector('.qlist');if(nl&&sc)nl.scrollTop=sc}
+
+function card(l){
+ let [pk,pt,cls]=ST[l.status]||['',l.status,''];const qm=QM[l.id];let tt=STH[l.status]||'';
+ if(l.status==='качаю'&&qm&&qm.recv===0){[pk,pt,cls]=['info','Подключаюсь…','s-info'];tt='Сервис запросил файл у Яндекса, но данные ещё не пошли. Это попытка подключения, а не скачивание.'}
+ const pc=l.total_bytes?Math.min(100,100*l.done_bytes/l.total_bytes):0;
+ const scanning=l.status==='листинг',checking=l.status==='проверка';
+ let notes='';
+ if(checking)notes+=`<div class="n-info"><i class="spin"></i>Проверяю ссылку${l.has_pw?' и пароль':''}…</div>`;
+ if(scanning)notes+=`<div class="n-info"><i class="spin"></i>Получаю структуру папок… найдено <b class="num">${l.scan_files||0}</b> ${pl(l.scan_files||0,['файл','файла','файлов'])} в <b class="num">${l.scan_dirs||0}</b> ${pl(l.scan_dirs||0,['папке','папках','папках'])}</div>`;
+ if(l.has_pw&&l.pw_state)notes+=`<div class="${l.pw_state.startsWith('✗')?'n-bad':l.pw_state.startsWith('✓')?'n-ok':'n-mut'}">${esc(l.pw_state)}</div>`;
+ if(l.status==='выбор файлов')notes+=`<div class="n-ok">Структура получена. Выбери файлы и нажми «В работу».</div>`;
+ if(qm&&(qm.recv||qm.conn))notes+=`<div class="n-mut">Получают данные: <b class="num">${qm.recv}</b> · подключаются: <b class="num">${qm.conn}</b></div>`;
+ if(l.status==='ждём Яндекс')notes+=`<div class="n-warn">${esc(l.wait_reason||'файлы пока недоступны')}</div><div class="n-mut">Яндекс не отдаёт файлы этой ссылки. Сервис повторит сам, делать ничего не нужно.</div>`;
+ if(l.stuck_count)notes+=`<div class="n-warn">Не отдаются Яндексом: ${files(l.stuck_count)}, пробуем снова каждые 10–60 с</div>`;
+ if(l.failed&&l.failed.length)notes+=`<div class="n-bad">Не скачано из-за ошибок: ${l.failed.length}, будет повторено</div>`;
+ if(l.error)notes+=`<div class="n-bad">${esc(l.error)}</div>`;
+ if(l.status==='готово')notes+=`<div class="n-ok">Готово. Ссылку на Яндексе можно закрыть.</div>`;
+ const skip=l.skipped_files?`<div><span class="chip">⊘ Исключено вами: ${files(l.skipped_files)}, ${fmt(l.skipped_bytes)} — не скачиваются</span></div>`:'';
+ const id=l.id;let a='',ic='';
+ const I={retry:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>',
+  del:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3.5"/><path d="M10.5 12.5L20 3M16 7l3 3"/></svg>'};
+ if(l.status==='выбор файлов'){
+   a+=`<button class="btn sm primary" data-id="${id}" onclick="openTree(this.dataset.id)">Выбрать файлы</button><button class="btn sm primary" data-id="${id}" onclick="act('start',this.dataset.id)">${l.skipped_files?'В работу — выбрано '+files(l.total_files)+', '+fmt(l.total_bytes):'В работу — все '+files(l.total_files||0)+', '+fmt(l.total_bytes)}</button>`;
+ }else{
+   if(!checking&&!scanning)a+=`<button class="btn sm" data-id="${id}" onclick="openTree(this.dataset.id)">Выбрать файлы</button>`;
+   if(l.status==='остановлено')a+=`<button class="btn sm primary" data-id="${id}" onclick="act('start',this.dataset.id)">Продолжить</button>`;
+   else if(!['готово','проверка','листинг','ошибка'].includes(l.status))a+=`<button class="btn sm warn" data-id="${id}" onclick="act('stop',this.dataset.id)">Остановить</button>`;
+ }
+ if(l.has_pw)ic+=`<button class="btn ib" title="Проверить пароль (войти заново)" aria-label="Проверить пароль" data-id="${id}" onclick="act('check',this.dataset.id)">${I.key}</button>`;
+ ic+=`<button class="btn ib" title="Повторить: сбросить паузы и ошибки" aria-label="Повторить" data-id="${id}" onclick="retry(this.dataset.id)">${I.retry}</button><button class="btn ib bad" title="Убрать из списка (скачанное остаётся)" aria-label="Убрать" data-id="${id}" onclick="rm(this.dataset.id)">${I.del}</button>`;
+ a+=`<span class="end">${ic}</span>`;
+ return `<article class="card ${cls}"><div class="hd"><div class="nm">${esc(l.name||l.url)}</div><span class="pill ${pk}" title="${esc(tt)}">${pk==='live'?'<i class="dot"></i>':''}${pt}</span></div>
+ <div class="pr"><i style="width:${pc.toFixed(1)}%"></i></div>
+ <div class="kv"><span><b>${l.done_files||0}</b> из <b>${l.total_files||'?'}</b> выбранных файлов</span><span><b>${fmt(l.done_bytes)}</b> из <b>${l.total_bytes?fmt(l.total_bytes):'?'}</b></span><span><b>${Math.round(pc)}%</b></span></div>
+ <div class="notes">${notes}${skip}</div><div class="acts">${a}</div></article>`;
+}
+function section(k,title,hint,arr){
+ if(!arr.length)return '';
+ const done=arr.reduce((s,l)=>s+(l.done_bytes||0),0);
+ return `<details class="grp" ${GO[k]?'open':''} ontoggle="GO['${k}']=this.open"><summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg><span class="gtitle">${title}</span><span class="gmeta">${arr.length} ${pl(arr.length,['ссылка','ссылки','ссылок'])} · скачано ${fmt(done)}</span></summary><div class="gh">${hint}</div><div class="cards">${arr.map(card).join('')}</div></details>`}
+
+async function load(){
+ let s;try{const r=await fetch('/api/state');if(r.status===401){location.href='/login';return}s=await r.json();lastOk=Date.now()}catch(e){$('live').classList.add('off');$('sub').textContent='нет связи со службой';return}
+ $('live').classList.remove('off');
+ $('lo').hidden=!s.auth;
+ $('pp').textContent=s.paused?'▶ Продолжить':'Пауза';
+ const now=Date.now()/1000;
+ $('sub').textContent=(s.paused?'на паузе · ':'')+'обновляется каждые 3 с · '+new Date().toLocaleTimeString('ru-RU');
+ if(s.stats)renderStats(s.stats);
+ const SL=s.links.filter(l=>!LF||(l.name||l.url).toLowerCase().includes(LF.toLowerCase()));
+ const fin=SL.filter(l=>l.status==='готово'),part=fin.filter(l=>l.skipped_files>0),full=fin.filter(l=>!l.skipped_files),act_=SL.filter(l=>l.status!=='готово');
+ if(Date.now()>=HOLD&&!document.querySelector('#list .acts button:hover'))$('list').innerHTML=section('a','В работе и ожидание','Проверка, выбор файлов, скачивание, повторные попытки, остановленные и с ошибками.',act_)
+  +section('p','Выбранное скачано, но не вся структура','Всё отмеченное скачано; часть файлов вы исключили («Выбрать файлы» вернёт их в работу).',part)
+  +section('f','Скачано полностью (100%)','Ничего не исключено, всё на месте. Ссылки на Яндексе можно закрывать.',full)
+  +(s.links.length?'':'<div class="panel empty">Ссылок пока нет. Нажми «Добавить ссылки».</div>');
+ $('log').textContent=s.log.slice(-40).reverse().join('\n');
+}
+
+/* ---------- дерево выбора файлов ---------- */
+const sz=n=>n.files.reduce((a,f)=>a+f.size,0)+Object.values(n.dirs).reduce((a,d)=>a+sz(d),0);
+const bc=n=>n.files.filter(f=>f.bad).length+Object.values(n.dirs).reduce((a,d)=>a+bc(d),0);
+function rnd(n){let h='';
+ Object.values(n.dirs).sort((a,b)=>a.name.localeCompare(b.name)).forEach(d=>{
+  h+=`<details><summary class="row"><label><input type="checkbox" data-t="d" data-p="${esc(d.path)}" onchange="tg(this)"><span>${esc(d.name)}</span><span class="sz">${fmt(sz(d))}</span>${bc(d)?`<span class="badf">⚠ недоступно: ${bc(d)}</span>`:''}</label></summary>${rnd(d)}</details>`});
+ n.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f=>{
+  h+=`<div class="f row"><label><input type="checkbox" data-t="f" data-s="${f.size}" data-b="${f.bad?1:0}" data-p="${esc(f.path)}" ${f.off?'':'checked'} onchange="tg(this)"><span class="nmx">${esc(f.name)}</span><span class="sz">${fmt(f.size)}${f.done?' · скачан':''}</span>${f.bad?'<span class="badf">⚠ сейчас не отдаётся</span>':''}</label></div>`});
+ return h}
+function syncTree(){const mt=$('mt');
+ [...mt.querySelectorAll('details')].reverse().forEach(d=>{const all=[...d.querySelectorAll('input[data-t=f]')];const on=all.filter(x=>x.checked).length;
+  const c=d.querySelector('summary input');if(c){c.checked=on===all.length&&all.length>0;c.indeterminate=on>0&&on<all.length}});
+ const fs=[...mt.querySelectorAll('input[data-t=f]')];let tot=0,sel=0,cnt=0;fs.forEach(x=>{const s=+x.dataset.s;tot+=s;if(x.checked){sel+=s;cnt++}});
+ $('msum').textContent='Будет скачано: '+files(cnt)+', '+fmt(sel)+' из '+fmt(tot)}
+function tg(el){if(el.dataset.t==='d'){el.closest('details').querySelectorAll('input[data-t=f]').forEach(x=>x.checked=el.checked)}syncTree()}
+function setAll(v){$('mt').querySelectorAll('input[data-t=f]').forEach(x=>x.checked=v);syncTree()}
+function uncheckBad(){document.querySelectorAll('#mt input[data-t=f][data-b="1"]').forEach(x=>x.checked=false);syncTree()}
+function filterTree(q){q=q.trim().toLowerCase();const mt=$('mt');
+ mt.querySelectorAll('.f').forEach(r=>{r.style.display=(!q||r.textContent.toLowerCase().includes(q))?'':'none'});
+ [...mt.querySelectorAll('details')].reverse().forEach(d=>{const vis=[...d.querySelectorAll('.f')].some(r=>r.style.display!=='none');d.style.display=vis||!q?'':'none';if(q&&vis)d.open=true})}
+function coll(el,out){
+ el.querySelectorAll(':scope > details').forEach(d=>{const all=[...d.querySelectorAll('input[data-t=f]')];const on=all.filter(x=>x.checked).length;
+  if(on===0&&all.length>0)out.push(d.querySelector('summary input').dataset.p);else if(on<all.length)coll(d,out)});
+ el.querySelectorAll(':scope > div.f input').forEach(x=>{if(!x.checked)out.push(x.dataset.p)})}
+async function openTree(id){TID=id;
+ const r=await fetch('/api/tree?id='+id);if(!r.ok){alert('Список файлов ещё не получен — подожди несколько секунд');return}
+ const d=await r.json();const ex=d.excluded;const badSet=new Set(d.bad||[]);const isEx=p=>ex.some(e=>p===e||p.startsWith(e+'/'));
+ const root={name:'',dirs:{},files:[],path:''};
+ d.files.forEach(([p,s,dn])=>{const parts=p.split('/').filter(Boolean);let n=root;
+  for(let i=0;i<parts.length-1;i++){const k=parts[i];n=n.dirs[k]=n.dirs[k]||{name:k,dirs:{},files:[],path:n.path+'/'+k}}
+  n.files.push({name:parts[parts.length-1],size:s,done:dn,path:p,off:isEx(p),bad:badSet.has(p)})});
+ $('mh').textContent='Что скачивать: '+d.name;$('q').value='';
+ $('mt').innerHTML=rnd(root);syncTree();$('mgo').style.display=d.started?'none':'inline-flex';$('md').style.display='block'}
+function closeTree(){$('md').style.display='none';$('mt').innerHTML=''}
+async function saveTree(go){const out=[];coll($('mt'),out);
+ await fetch('/api/exclude?id='+TID,{method:'POST',body:JSON.stringify(out)});
+ if(go)await fetch('/api/start?id='+TID,{method:'POST'});closeTree();load()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('md').style.display==='block')closeTree();if($('hm').style.display==='block')closeHist()}});
+/* ---------- история загрузки ---------- */
+function tl(t,r){const d=new Date(t*1000),p=n=>String(n).padStart(2,'0');
+ if(r==='7d')return p(d.getDate())+'.'+p(d.getMonth()+1)+' '+p(d.getHours())+':00';
+ if(r==='30d'||r==='all')return p(d.getDate())+'.'+p(d.getMonth()+1);
+ return p(d.getHours())+':'+p(d.getMinutes())}
+async function openHist(){$('hm').style.display='block';await loadHist(HR)}
+function closeHist(){$('hm').style.display='none'}
+async function loadHist(r){HR=r;[...$('seg').children].forEach(b=>b.classList.toggle('on',b.dataset.r===r));
+ let d;try{d=await (await fetch('/api/metrics?range='+r)).json()}catch(e){$('hnote').textContent='Не удалось получить данные';return}
+ drawHist(d)}
+function drawHist(d){
+ const pts=d.points,sm=d.summary,svg=$('hc'),MB=1048576,r=d.range;
+ const rus=n=>n.toFixed(2).replace('.',',');
+ $('hsum').innerHTML=[['Средняя скорость',rus(sm.avg_speed/MB)+' МБ/с'],['Пик',rus(sm.max_speed/MB)+' МБ/с'],['Скачано за период ≈',fmt(sm.bytes)],['Файлов скачано',sm.ok],['Зависаний Яндекса',sm.st],['Занято слотов (ср.)',sm.avg_busy.toFixed(1).replace('.',',')],['Простой (скорость ≈ 0)',sm.idle_pct+'%'],['Свободно на диске (мин.)',fmt(sm.min_disk)]].map(([a,b])=>`<div class="hs"><div class="lab">${a}</div><div class="v num">${b}</div></div>`).join('');
+ if(pts.length<2){svg.innerHTML='<text x="500" y="200" text-anchor="middle" style="font-size:14px">Данных пока мало: журнал пишется раз в 10 секунд</text>';$('hnote').textContent='';return}
+ const W=1000,H=430,L=58,R=42,T=30,B=26,LANE=96,PB=H-B-LANE-18,LT=H-B-LANE,x0=d.from,x1=Math.max(d.to,pts[pts.length-1].t+d.bucket);
+ const X=t=>L+(t-x0)/(x1-x0)*(W-L-R);
+ const sMax=Math.max(0.5,nice(Math.max(...pts.map(p=>p.speed))/MB*1.12||1)),slMax=Math.max(8,...pts.map(p=>p.busy_max));
+ const Y1=v=>T+(1-v/sMax)*(PB-T),Y2=v=>T+(1-v/slMax)*(PB-T);
+ let g='';
+ for(let i=0;i<=4;i++){const y=T+i*(PB-T)/4;g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-dasharray="${i&&i<4?'3 4':'0'}"/><text x="${L-8}" y="${y+4}" text-anchor="end">${(sMax*(4-i)/4).toFixed(sMax<2?2:1).replace('.',',')}</text><text x="${W-R+8}" y="${y+4}" style="fill:var(--blue)">${Math.round(slMax*(4-i)/4)}</text>`}
+ g+=`<text x="${L-8}" y="${T-14}" text-anchor="end">МБ/с</text><text x="${W-R+8}" y="${T-14}" style="fill:var(--blue)">слоты</text>`;
+ for(let i=0;i<=5;i++){const t=x0+(x1-x0)*i/5;g+=`<text x="${X(t)}" y="${H-8}" text-anchor="${i===0?'start':i===5?'end':'middle'}">${tl(t,r)}</text>`}
+ const sp=pts.map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+Y1(p.speed/MB).toFixed(1)).join(' ');
+ const area=sp+` L${X(pts[pts.length-1].t).toFixed(1)} ${PB} L${X(pts[0].t).toFixed(1)} ${PB} Z`;
+ const sl=pts.map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+Y2(p.busy).toFixed(1)).join(' ');
+ /* нижняя полоса: файлы скачаны (вверх, зелёные) и зависания (вниз, красные); точки склеиваем в столбики шириной не меньше ~7 px */
+ const k=Math.max(1,Math.ceil(pts.length/((W-L-R)/7))),bins=[];
+ for(let i=0;i<pts.length;i+=k){const c=pts.slice(i,i+k);bins.push({t:c[0].t,ok:c.reduce((a,p)=>a+p.ok,0),st:c.reduce((a,p)=>a+p.st,0)})}
+ const bw=Math.max(2,(W-L-R)*(k*d.bucket)/(x1-x0)-2),mid=LT+LANE/2,half=LANE/2-6,bm=Math.max(1,...bins.map(b=>Math.max(b.ok,b.st)));
+ let lane=`<line x1="${L}" x2="${W-R}" y1="${mid}" y2="${mid}" stroke="var(--line2)"/><rect x="${L}" y="${LT}" width="${W-L-R}" height="${LANE}" fill="none" stroke="var(--line)" rx="6"/>
+  <text x="${L-8}" y="${LT+13}" text-anchor="end" style="fill:var(--accent)">файлы ↑</text><text x="${L-8}" y="${LT+LANE-4}" text-anchor="end" style="fill:var(--bad)">сбои ↓</text>
+  <text x="${W-R+8}" y="${LT+13}">${bm}</text><text x="${W-R+8}" y="${LT+LANE-4}">${bm}</text>`;
+ bins.forEach(b=>{const x=X(b.t)+1;
+  if(b.ok)lane+=`<rect x="${x.toFixed(1)}" y="${(mid-Math.max(2,b.ok/bm*half)).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2,b.ok/bm*half).toFixed(1)}" rx="1.5" fill="var(--accent)" opacity=".85"/>`;
+  if(b.st)lane+=`<rect x="${x.toFixed(1)}" y="${mid}" width="${bw.toFixed(1)}" height="${Math.max(2,b.st/bm*half).toFixed(1)}" rx="1.5" fill="var(--bad)" opacity=".6"/>`});
+ svg.innerHTML=`<defs><linearGradient id="hg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".38"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>${g}${lane}
+  <path d="${sl}" fill="none" stroke="var(--blue)" stroke-width="1.6" stroke-dasharray="5 3" opacity=".85"/>
+  <path d="${area}" fill="url(#hg)"/><path d="${sp}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+  <line id="hl" y1="${T}" y2="${H-B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/><circle id="hd" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" style="display:none"/>
+  <rect id="hr" x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="transparent"/>`;
+ const tip=$('htip'),box=svg.parentElement;
+ $('hr').onmousemove=ev=>{const rc=svg.getBoundingClientRect(),px=(ev.clientX-rc.left)/rc.width*W;let b=0,bd=1e9;pts.forEach((p,i)=>{const q=Math.abs(X(p.t)-px);if(q<bd){bd=q;b=i}});
+  const p=pts[b],x=X(p.t);$('hl').setAttribute('x1',x);$('hl').setAttribute('x2',x);$('hl').style.display='';$('hd').setAttribute('cx',x);$('hd').setAttribute('cy',Y1(p.speed/MB));$('hd').style.display='';
+  tip.innerHTML=`<b>${new Date(p.t*1000).toLocaleString('ru-RU')}</b><br>Скорость: <b class="num">${rus(p.speed/MB)} МБ/с</b><br>Занято слотов: <b class="num">${p.busy.toFixed(1).replace('.',',')}</b> (макс. ${p.busy_max})<br>Не отдаются: <b class="num">${p.stuck}</b> файл(ов), узлов: ${p.nodes}<br>За этот отрезок: файлов скачано <b class="num">${p.ok}</b> · зависаний <b class="num">${p.st}</b>`;
+  tip.style.display='block';const bx=box.getBoundingClientRect();const tw=tip.offsetWidth||260,th=tip.offsetHeight||120;let left=ev.clientX-bx.left+28;if(left>bx.width-tw-8)left=ev.clientX-bx.left-tw-28;tip.style.left=Math.max(4,left)+'px';tip.style.top=Math.min(Math.max(4,ev.clientY-bx.top-th-24),bx.height-th-4)+'px'};
+ $('hr').onmouseleave=()=>{tip.style.display='none';$('hl').style.display='none';$('hd').style.display='none'};
+ const mins=Math.round(d.bucket/60);$('hnote').textContent='Одна точка линии ≈ '+(d.bucket<90?d.bucket+' с':mins+' мин')+' · столбик нижней полосы ≈ '+(k*d.bucket<90?k*d.bucket+' с':Math.round(k*d.bucket/60)+' мин')+' · замеров в периоде: '+sm.samples}
+
+fetch('/api/version').then(r=>r.json()).then(d=>{const e=document.getElementById('ver');if(e)e.textContent='ydl '+d.version+(d.status?' · '+d.status+' (ранняя версия, на свой страх и риск)':'')}).catch(()=>{});
+applyTheme(document.documentElement.dataset.theme||'auto');
+load().then(()=>setTimeout(()=>document.body.classList.remove('boot'),900));setInterval(load,3000);
+</script>
+<div id="ver" style="text-align:center;font-size:12px;color:var(--faint);padding:0 0 24px"></div>
+</body>
+</html>

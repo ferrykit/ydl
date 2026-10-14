@@ -1,0 +1,70 @@
+services:
+  ydl:
+    image: ${YDL_IMAGE:-ydl:local}
+    build: .
+    restart: unless-stopped
+    init: true                      # корректно завершает дочерние процессы Chromium (без «зомби»)
+    read_only: true                 # файловая система контейнера только для чтения; писать можно в /data, /config и /tmp
+    tmpfs:
+      - /tmp:size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL                         # лишних прав у контейнера нет; ниже только то, что нужно entrypoint, чтобы выставить владельца папок
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    ports:
+      # YDL_BIND=127.0.0.1 в режимах HTTPS: открытый порт наружу не торчит, трафик идёт через Caddy
+      - "${YDL_BIND:-0.0.0.0}:${YDL_PORT:-8085}:8085"
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Moscow}
+      YDL_PASSWORD: ${YDL_PASSWORD:-}
+      YDL_SLOTS: ${YDL_SLOTS:-8}
+      YDL_SCOUT: ${YDL_SCOUT:-1}
+      YDL_HOST_PATH: ${YDL_DOWNLOADS:-./downloads}
+      YDL_BEHIND_PROXY: ${YDL_BEHIND_PROXY:-0}
+      YDL_HTTPS_HOST: ${YDL_HTTPS_HOST:-}
+      YDL_ALLOWED_HOSTS: ${YDL_ALLOWED_HOSTS:-}
+      YDL_MIN_FREE_GB: ${YDL_MIN_FREE_GB:-2}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      # куда складываются скачанные файлы (папка на сервере; можно абсолютный путь, например /mnt/disk/yadisk)
+      - ${YDL_DOWNLOADS:-./downloads}:/data
+      # служебные данные: очередь ссылок, пароли ссылок, история скорости
+      - ydl-config:/config
+    shm_size: 512m
+
+  # HTTPS: включается командой ./ydl https ... (профиль «https», его подставляет COMPOSE_PROFILES в .env)
+  caddy:
+    image: caddy:2.11
+    profiles: ["https"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    depends_on:
+      - ydl
+    ports:
+      - "${YDL_CADDY_HTTP:-80:80}"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  ydl-config:
+  caddy-data:
+  caddy-config:

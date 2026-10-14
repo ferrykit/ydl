@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+# ydl — управление сервисом одной командой. Запускайте из папки проекта: ./ydl <команда>
+cd "$(dirname "$0")" || exit 1
+DC="docker compose"
+say() { printf '%s\n' "$*"; }
+env_get() { [ -f .env ] && grep "^$1=" .env | tail -1 | cut -d= -f2-; }
+
+# адреса, по которым страницу можно открыть: основной первым; без адресов докера и IPv6
+raw_ips() { # адреса этого сервера: основной первым; без адресов докера и IPv6
+  ips="$(hostname -I 2>/dev/null)"
+  [ -n "$ips" ] || ips="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')"
+  [ -n "$ips" ] || ips="$(ipconfig getifaddr en0 2>/dev/null) $(ipconfig getifaddr en1 2>/dev/null)"
+  good=""; dockerish=""
+  for ip in $ips; do
+    case "$ip" in *:*|127.*|169.254.*|"") continue ;; esac
+    case "$ip" in 172.1[7-9].*|172.2[0-9].*|172.3[01].*) dockerish="$dockerish $ip" ;; *) good="$good $ip" ;; esac
+  done
+  [ -n "$good" ] || good="$dockerish"
+  for ip in $good; do echo "$ip"; done
+}
+
+host_urls() {
+  case "$(env_get YDL_HTTPS)" in ip|domain) echo "https://$(env_get YDL_HTTPS_HOST)"; return ;; esac
+  port="$(env_get YDL_PORT)"; port="${port:-8085}"
+  n=0
+  for ip in $(raw_ips); do n=$((n+1)); [ $n -le 3 ] && echo "http://$ip:$port"; done
+  [ $n -gt 0 ] || echo "http://localhost:$port"
+}
+
+# ---------- HTTPS ----------
+valid_host() { # 0 — похоже на домен или IPv4; без пробелов и спецсимволов, которые сломали бы конфиг (кириллицу — в punycode xn--)
+  case "$1" in ''|*[!A-Za-z0-9.-]*|.*|-*|*..*|*.) return 1 ;; esac
+  case "$1" in *.*) return 0 ;; esac
+  return 1
+}
+env_set() { # env_set КЛЮЧ ЗНАЧЕНИЕ — задать/заменить строку в .env
+  touch .env
+  if grep -q "^$1=" .env 2>/dev/null; then sed "s|^$1=.*|$1=$2|" .env > .env.tmp && cat .env.tmp > .env && rm -f .env.tmp; else echo "$1=$2" >> .env; fi
+}
+is_private_ip() { # 0 — адрес частный (домашняя сеть, CGNAT, link-local)
+  case "$1" in
+    10.*|192.168.*|169.254.*|127.*) return 0 ;;
+    172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 0 ;;
+    100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 0 ;;
+  esac
+  return 1
+}
+lan_ip() { raw_ips | head -1; }
+pub_ip() {
+  for u in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
+    ip="$(curl -fsS -m 6 "$u" 2>/dev/null | tr -d ' \n')"
+    case "$ip" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) echo "$ip"; return ;; esac
+  done
+}
+port_busy() { (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q "[:.]$1 "; }
+
+dns_v4() { getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u; }
+dns_v6() { getent ahostsv6 "$1" 2>/dev/null | awk '{print $1}' | grep -v '^::ffff:' | sort -u; }
+dns_check() { # dns_check ДОМЕН [IP сервера]: 0 — указывает на этот сервер, 1 — не резолвится, 2 — указывает на другой адрес
+  me="${2:-$(pub_ip)}"; ips="$(dns_v4 "$1")"
+  [ -n "$ips" ] || return 1
+  printf '%s\n' "$ips" | grep -qx "$me" && return 0
+  return 2
+}
+dns_wait() { # ждём (до 10 минут), пока DNS начнёт указывать на этот сервер
+  i=0
+  while [ $i -lt 40 ]; do dns_check "$1" "$2" && return 0; sleep 15; i=$((i+1)); done
+  return 1
+}
+my_v6() { ip -6 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1; }
+v6_mismatch() { # 0 — у домена есть AAAA, и она не указывает на этот сервер (Let's Encrypt проверит и по IPv6 и не пройдёт)
+  six="$(dns_v6 "$1")"; [ -n "$six" ] || return 1
+  mine="$(my_v6)"
+  for a in $six; do printf '%s\n' "$mine" | grep -qx "$a" && return 1; done
+  return 0
+}
+
+write_caddyfile() {
+  mode="$(env_get YDL_HTTPS)"; host="$(env_get YDL_HTTPS_HOST)"
+  stg=""; [ "$(env_get YDL_ACME_STAGING)" = "1" ] && stg="https://acme-staging-v02.api.letsencrypt.org/directory"
+  no80=0; [ "$(env_get YDL_HTTPS_NO80)" = "1" ] && no80=1   # порт 80 занят чужой программой: только 443, проверка TLS-ALPN
+  case "$mode" in
+    ip|domain)
+      {
+        printf '{\n'
+        [ "$mode" = ip ] && printf '\tdefault_sni %s\n' "$host"
+        [ "$no80" = 1 ] && printf '\tauto_https disable_redirects\n'
+        printf '}\n'
+        if [ "$no80" = 1 ]; then printf 'https://%s {\n' "$host"; else printf '%s {\n' "$host"; fi
+        if [ "$mode" = ip ] || [ -n "$stg" ] || [ "$no80" = 1 ]; then
+          printf '\ttls {\n\t\tissuer acme {\n'
+          [ -n "$stg" ] && printf '\t\t\tdir %s\n' "$stg"
+          [ "$no80" = 1 ] && printf '\t\t\tdisable_http_challenge\n'
+          [ "$mode" = ip ] && printf '\t\t\tprofile shortlived\n'
+          printf '\t\t}\n\t}\n'
+        fi
+        printf '\treverse_proxy ydl:8085\n}\n'
+      } > Caddyfile ;;
+    *) : > Caddyfile ;;
+  esac
+}
+
+httpmap() { # подбирает, как публиковать порт 80: обычно 80:80; если занят чужой программой, Caddy работает только на 443
+  # наш Caddy в обычном режиме сам держит порт 80: его «занятость» не считаем; в режиме без порта 80 проверяем, не освободился ли он
+  if [ -n "$($DC ps -q caddy 2>/dev/null)" ] && [ "$(env_get YDL_HTTPS_NO80)" != "1" ]; then return 0; fi
+  if port_busy 80; then
+    p=18080; while port_busy "$p"; do p=$((p+1)); done
+    env_set YDL_HTTPS_NO80 1; env_set YDL_CADDY_HTTP "127.0.0.1:$p:80"
+  else
+    env_set YDL_HTTPS_NO80 0; env_set YDL_CADDY_HTTP "80:80"
+  fi
+}
+
+fw_open() { # fw_open "80 443" — если включён ufw, открыть порты
+  command -v ufw >/dev/null 2>&1 || return 0
+  SUDO=""; [ "$(id -u)" != 0 ] && SUDO="sudo"
+  $SUDO ufw status 2>/dev/null | grep -q "Status: active" || return 0
+  for p in $1; do $SUDO ufw allow "$p/tcp" >/dev/null 2>&1 && say "Файрвол ufw: открыт порт $p/tcp"; done
+}
+
+wait_cert() { # ждём, пока у Caddy появится сертификат для адреса; 0 — есть
+  host="$(env_get YDL_HTTPS_HOST)"; i=0
+  while [ $i -lt 60 ]; do
+    $DC exec -T caddy sh -c "ls /data/caddy/certificates/*/$host/$host.crt" >/dev/null 2>&1 && return 0
+    sleep 2; i=$((i+1))
+  done
+  return 1
+}
+
+https_apply() { # https_apply РЕЖИМ АДРЕС
+  env_set YDL_HTTPS "$1"; env_set YDL_HTTPS_HOST "$2"
+  httpmap
+  env_set YDL_BIND 127.0.0.1; env_set YDL_BEHIND_PROXY 1; env_set COMPOSE_PROFILES https
+  write_caddyfile
+  if [ "$(env_get YDL_HTTPS_NO80)" = "1" ]; then fw_open "443"; else fw_open "80 443"; fi
+  $DC up -d >/dev/null 2>&1 || { $DC up -d; return 1; }
+  $DC restart caddy >/dev/null 2>&1 || true
+}
+
+running() { [ -n "$($DC ps -q ydl 2>/dev/null)" ]; }
+
+# выполнить команду внутри сервиса (если он остановлен — во временном контейнере с теми же томами)
+inside() {
+  if running; then $DC exec -T ydl "$@"; else $DC run --rm --no-deps -T --entrypoint "$1" ydl "${@:2}"; fi
+}
+
+update_available() { # 0 — есть что обновлять
+  if [ -d .git ]; then
+    git fetch --quiet 2>/dev/null || return 2
+    [ "$(git rev-parse HEAD)" != "$(git rev-parse '@{u}' 2>/dev/null || git rev-parse HEAD)" ]
+  else
+    return 2
+  fi
+}
+
+do_update() {
+  quiet="$1"
+  if [ -n "$(env_get YDL_IMAGE)" ]; then
+    say "Обновляю образ…"; $DC pull && $DC up -d
+  elif [ -d .git ]; then
+    git fetch --quiet || { say "Не удалось связаться с репозиторием."; return 1; }
+    if update_available; then
+      say "Есть обновление:"; git --no-pager log --oneline HEAD..@{u} | head -20
+      git pull --ff-only || { say "Не получилось обновиться автоматически (в папке есть ваши изменения)."; return 1; }
+      $DC build && $DC up -d && say "Готово: теперь версия $(cat app/VERSION)."
+    else
+      [ -n "$quiet" ] || say "Уже последняя версия ($(cat app/VERSION))."
+    fi
+  elif [ -n "$(env_get YDL_UPDATE_URL)" ]; then
+    url="$(env_get YDL_UPDATE_URL)"; tmp="$(mktemp -d)"
+    say "Скачиваю обновление…"
+    curl -fsSL "$url" | tar xz -C "$tmp" --strip-components=1 || { say "Не удалось скачать обновление."; rm -rf "$tmp"; return 1; }
+    if [ "$(cat "$tmp/app/VERSION" 2>/dev/null)" = "$(cat app/VERSION)" ]; then
+      [ -n "$quiet" ] || say "Уже последняя версия ($(cat app/VERSION))."; rm -rf "$tmp"; return 0
+    fi
+    for f in app Dockerfile docker-compose.yml entrypoint.sh install.sh ydl README.md CHANGELOG.md .env.example; do
+      [ -e "$tmp/$f" ] && { rm -rf "./$f.new"; cp -R "$tmp/$f" "./$f.new" && rm -rf "./$f" && mv "./$f.new" "./$f"; }
+    done
+    rm -rf "$tmp"
+    $DC build && $DC up -d && say "Готово: теперь версия $(cat app/VERSION)."
+  else
+    say "Не знаю, откуда обновляться: это не git-репозиторий, а в .env нет YDL_UPDATE_URL или YDL_IMAGE."
+    return 1
+  fi
+}
+
+case "$1" in
+  start|up)     $DC up -d ;;
+  stop|down)    $DC down ;;
+  restart)      $DC restart ydl ;;
+  logs)         shift; svc="${1:-ydl}"; [ $# -gt 0 ] && shift; $DC logs -f --tail=100 "$svc" "$@" ;;
+  status)
+    $DC ps
+    say "Версия: $(cat app/VERSION)   Файлы: $(env_get YDL_DOWNLOADS)"
+    if [ -n "$(env_get YDL_HTTPS)" ] && [ "$(env_get YDL_HTTPS)" != "off" ]; then
+      if [ -z "$($DC ps -q --status running caddy 2>/dev/null)" ]; then
+        say "ВНИМАНИЕ: HTTPS не работает: Caddy не запущен (страница снаружи недоступна). Обычно порт 443 занят другой программой. Смотрите: ./ydl logs caddy"
+      fi
+    fi
+    update_available; case $? in 0) say "Доступно обновление: ./ydl update" ;; 1) say "Установлена последняя версия." ;; esac ;;
+  password|passwd)
+    shift; inside python /app/ydl.py passwd "$@" ;;
+  update)       do_update ;;
+  autoupdate)
+    here="$(pwd)"; line="0 4 * * * '$here/ydl' update-quiet >> '$here/update.log' 2>&1"
+    case "$2" in
+      on|off) command -v crontab >/dev/null 2>&1 || { say "На этом сервере нет crontab (apt install cron). Обновляйтесь вручную: ./ydl update"; exit 1; } ;;
+    esac
+    case "$2" in
+      on)  ( crontab -l 2>/dev/null | grep -v "ydl update-quiet"; echo "$line" ) | crontab - && say "Автообновление включено: каждую ночь в 04:00 (журнал: update.log)." ;;
+      off) ( crontab -l 2>/dev/null | grep -v "ydl update-quiet" ) | crontab - && say "Автообновление выключено." ;;
+      *)   if crontab -l 2>/dev/null | grep -q "ydl update-quiet"; then say "Автообновление: включено"; else say "Автообновление: выключено (включить: ./ydl autoupdate on)"; fi ;;
+    esac ;;
+  update-quiet) do_update quiet ;;
+  slots)
+    cur="$(env_get YDL_SLOTS)"; cur="${cur:-8}"
+    if [ -z "$2" ]; then say "Слотов сейчас: $cur (сменить: ./ydl slots 6; ориентиры: README, раздел «Слоты»)"; exit 0; fi
+    case "$2" in ''|*[!0-9]*) say "Нужно число от 1 до 32."; exit 1 ;; esac
+    if [ "$2" -lt 1 ] || [ "$2" -gt 32 ]; then say "Нужно число от 1 до 32."; exit 1; fi
+    if grep -q '^YDL_SLOTS=' .env 2>/dev/null; then
+      sed "s/^YDL_SLOTS=.*/YDL_SLOTS=$2/" .env > .env.tmp && cat .env.tmp > .env && rm -f .env.tmp
+    else
+      echo "YDL_SLOTS=$2" >> .env
+    fi
+    $DC up -d && say "Готово: слотов теперь $2 (очередь и докачка сохранены)." ;;
+  https)
+    mode="$2"; arg="$3"; cur="$(env_get YDL_HTTPS)"; cur="${cur:-off}"
+    case "$mode" in
+      ""|status)
+        say "Режим HTTPS: $cur   Адрес: $(env_get YDL_HTTPS_HOST)"
+        say "Сменить: ./ydl https ip | domain ИМЯ | off   (подробнее: README, раздел «HTTPS»)"
+        exit 0 ;;
+      off)
+        $DC --profile https rm -sf caddy >/dev/null 2>&1 || true
+        env_set YDL_HTTPS off; env_set YDL_HTTPS_HOST ""; env_set YDL_BIND 0.0.0.0; env_set YDL_BEHIND_PROXY 0; env_set COMPOSE_PROFILES ""
+        rm -f Caddyfile
+        $DC up -d >/dev/null 2>&1 && say "HTTPS выключен. Страница снова по адресу: $(host_urls | head -1)" ;;
+      ip|domain)
+        case "$mode" in
+          ip)
+            host="${arg:-$(pub_ip)}"
+            [ -n "$host" ] || { say "Не удалось определить публичный IP. Укажите его: ./ydl https ip 203.0.113.5"; exit 1; }
+            valid_host "$host" || { say "«$host» не похоже на IP-адрес."; exit 1; }
+            if is_private_ip "$host"; then say "Адрес $host частный (домашняя сеть): Let's Encrypt выдаёт сертификаты только на публичные IP. Дома страница работает по http (шифрование там обычно не нужно); HTTPS возможен для сервера в интернете или для домена."; exit 1; fi ;;
+          domain)
+            host="$arg"; [ -n "$host" ] || { say "Укажите домен: ./ydl https domain ydl.example.com"; exit 1; }
+            valid_host "$host" || { say "«$host» не похоже на домен: допустимы латинские буквы, цифры, точка и дефис (кириллический домен укажите в виде xn--…)."; exit 1; }
+            ip_me="$(pub_ip)"
+            dns_check "$host" "$ip_me"; st=$?
+            if [ $st -ne 0 ]; then
+              if [ $st -eq 1 ]; then say "Домен $host пока ни на что не указывает. Добавьте у регистратора A-запись на ${ip_me:-IP этого сервера}."
+              else say "Домен $host указывает на $(dns_v4 "$host" | tr '\n' ' '), а этот сервер имеет адрес $ip_me."; fi
+              if [ -t 0 ]; then
+                printf 'Подождать, пока DNS обновится (до 10 минут)? [y/n] (y): '; read -r w; case "$w" in [nNнН]*) ;; *)
+                  printf 'Жду'; if dns_wait "$host" "$ip_me"; then say ""; say "DNS обновился."; else say ""; say "DNS пока не обновился: продолжаю, Caddy будет пробовать выпустить сертификат сам."; fi ;; esac
+              else
+                say "Продолжаю: пока адрес не совпадёт, сертификат не выдастся (Caddy будет пробовать сам)."
+              fi
+            fi
+            if v6_mismatch "$host"; then
+              say "ВНИМАНИЕ: у домена есть AAAA-запись (IPv6), которая не указывает на этот сервер. Let's Encrypt проверяет и по IPv6, поэтому выпуск может не пройти: удалите AAAA-запись у регистратора или направьте её на этот сервер."
+            fi ;;
+        esac
+        if [ "$cur" = "off" ] || [ -z "$($DC ps -q caddy 2>/dev/null)" ]; then
+          if port_busy 443; then say "Порт 443 на этом сервере уже занят другой программой (веб-сервер nginx/apache?). Для HTTPS он обязателен. Освободите его и повторите."; exit 1; fi
+          if port_busy 80; then say "Порт 80 занят другой программой: оставляю её в покое. HTTPS будет работать только на порту 443, сертификат подтверждается через него (TLS-ALPN). Адрес http://... продолжит обслуживать та программа."; fi
+        fi
+        https_apply "$mode" "$host" || { say "Не удалось запустить. Смотрите: ./ydl logs caddy"; exit 1; }
+          say "Жду, пока Let's Encrypt выдаст сертификат (до 2 минут)…"
+          if wait_cert; then say "Готово: https://$host (сертификат получен)."; else
+            say "Сертификат пока не получен. Частые причины: порты 80/443 закрыты в файрволе провайдера, домен не указывает на этот сервер."
+            say "Подробности: ./ydl logs caddy   (Caddy продолжит попытки сам)"; fi ;;
+      *) say "Использование: ./ydl https ip | domain ИМЯ | off"; exit 1 ;;
+    esac ;;
+  _validhost) valid_host "$2" ;;
+  _lanip) lan_ip ;;
+  _pubip) pub_ip ;;
+  _isprivate) is_private_ip "$2" ;;
+  _dnscheck) dns_check "$2" "$3" ;;
+  _dnswait) dns_wait "$2" "$3" ;;
+  _dnsv6) v6_mismatch "$2" ;;
+  _caddyfile) write_caddyfile ;;
+  _httpmap) httpmap ;;
+  _fw) fw_open "$2" ;;
+  _waitcert) wait_cert ;;
+  _portbusy) port_busy "$2" ;;
+  urls) host_urls ;;
+  info)
+    say ""
+    say "Откройте в браузере:"
+    say ""
+    host_urls | sed 's/^/    /'
+    say ""
+    if [ "$(env_get YDL_HTTPS)" = "off" ] || [ -z "$(env_get YDL_HTTPS)" ]; then say "С самого сервера: http://localhost:$(env_get YDL_PORT)"; else say "HTTPS: режим $(env_get YDL_HTTPS) (сменить: ./ydl https ...). С самого сервера без шифрования: http://localhost:$(env_get YDL_PORT)"; fi
+    say "Файлы лежат в:    $(env_get YDL_DOWNLOADS)"
+    say "Слотов: $(env_get YDL_SLOTS)   Версия: $(cat app/VERSION) $(cat app/STATUS 2>/dev/null)"
+    say "Пароль здесь не показываю: его могли сменить командой ./ydl password. Забыли или хотите сменить: ./ydl password"
+    say "" ;;
+  where)        say "$(env_get YDL_DOWNLOADS)" ;;
+  version)      cat app/VERSION ;;
+  ""|help|-h|--help)
+    cat <<HELP
+Команды (запускать из этой папки):
+  ./ydl start | stop | restart   запустить / остановить / перезапустить
+  ./ydl info                     адрес страницы, куда скачиваются файлы
+  ./ydl https ip|domain ИМЯ|off  включить/сменить/выключить HTTPS (шифрование)
+  ./ydl status                   состояние, версия, есть ли обновление
+  ./ydl logs                     журнал (Ctrl+C — выйти)
+  ./ydl password [новый]         включить, сменить или СБРОСИТЬ пароль на страницу (без аргумента — случайный)
+  ./ydl password --off           отключить пароль (вход без пароля, только для домашней сети)
+  ./ydl update                   обновить до последней версии
+  ./ydl autoupdate on|off        обновлять автоматически каждую ночь
+  ./ydl slots [N]                сколько файлов качать одновременно (без числа: показать текущее)
+  ./ydl where                    в какой папке лежат скачанные файлы
+  (скачанное можно забрать и из браузера: страница → «Файлы»)
+HELP
+    ;;
+  *) say "Неизвестная команда: $1 (список: ./ydl help)"; exit 1 ;;
+esac

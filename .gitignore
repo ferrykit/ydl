@@ -1,0 +1,15 @@
+# локальные настройки и данные
+.env
+.env.tmp
+downloads/
+update.log
+
+# генерируется командой ./ydl https ...
+Caddyfile
+
+# служебное
+__pycache__/
+*.pyc
+app.prev*/
+*.corrupt
+.DS_Store

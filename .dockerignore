@@ -1,0 +1,10 @@
+.git
+.github
+.env
+downloads
+tests
+*.md
+__pycache__
+*.pyc
+Caddyfile
+app.prev*
