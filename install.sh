@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Установка ydl: несколько вопросов (на все есть разумный ответ по умолчанию — достаточно Enter),
-# затем сборка и запуск. Запускать из папки проекта: ./install.sh
+# затем скачивание образа (или сборка) и запуск. Запускать из папки проекта: ./install.sh
 # Без вопросов можно задать переменными: YDL_DOWNLOADS=/путь YDL_PORT=8085 YDL_PASSWORD=... ./install.sh
 set -e
 cd "$(dirname "$0")"
+
+# Готовый образ из GitHub Container Registry (быстро, без сборки). Свою сборку на месте: YDL_IMAGE= ./install.sh
+YDL_IMAGE="${YDL_IMAGE-ghcr.io/ferrykit/ydl:latest}"
 
 say() { printf '%s\n' "$*"; }
 ask() { # ask "вопрос" "по умолчанию" -> ответ в $REPLY
@@ -18,7 +21,14 @@ valid_pass() { # допустимые символы: безопасные дл�
 valid_dir() { case "$1" in *[\$\#\"\'\`\\]*|*"
 "*) return 1 ;; esac; return 0; }
 free_gb() { df -Pk "$1" 2>/dev/null | awk 'NR==2{printf "%d", $4/1048576}'; }
-port_busy() { (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q "[:.]$1 "; }
+own_port() { # порт держит контейнер самого ydl (повторный запуск установщика): это не «чужая программа»
+  command -v docker >/dev/null 2>&1 || return 1
+  for svc in caddy ydl; do
+    docker ps --filter "label=com.docker.compose.service=$svc" --format '{{.Ports}}' 2>/dev/null | grep -q "[:.]$1->" && return 0
+  done
+  return 1
+}
+port_busy() { (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q "[:.]$1 " && ! own_port "$1"; }
 
 have_compose() { docker compose version >/dev/null 2>&1; }
 
@@ -155,6 +165,17 @@ else
     fi
   fi
 
+  if [ "$HTTPS_MODE" != off ]; then
+    ACME_RC=0; ./ydl _acmecheck || ACME_RC=$?
+    if [ "$ACME_RC" = 1 ]; then
+      say "  Этот сервер не может подключиться к Let's Encrypt (acme-v02.api.letsencrypt.org) по IPv4, бесплатный сертификат получить не удастся."
+      say "  Обычно так бывает, когда провайдер блокирует такие соединения: попробуйте другой сервер или дата-центр."
+      ask "Продолжить без HTTPS? (y/n)" "y"
+      case "$REPLY" in [nNнН]*) say "Остановлено. Запустите ./install.sh снова, когда доступ к Let's Encrypt появится."; exit 1 ;; esac
+      HTTPS_MODE=off; HTTPS_HOST=""
+    fi
+  fi
+
   # ---- куда складывать файлы
   if [ -z "$YDL_DOWNLOADS" ]; then
     say "Куда скачивать файлы? Свободное место на дисках этого компьютера:"
@@ -256,7 +277,12 @@ if [ -n "$MODE_NOW" ] && [ "$MODE_NOW" != off ]; then ./ydl _httpmap; ./ydl _cad
 
 say ""
 if grep -q '^YDL_IMAGE=' .env 2>/dev/null; then
-  say "Скачиваю готовый образ…"; docker compose pull
+  say "Скачиваю готовый образ…"
+  if ! docker compose pull; then
+    say "Не удалось скачать готовый образ, собираю его на этом компьютере (3–5 минут)…"
+    grep -v '^YDL_IMAGE=' .env > .env.tmp; cat .env.tmp > .env; rm -f .env.tmp
+    docker compose build
+  fi
 else
   say "Собираю образ (первый раз 3–5 минут, дальше быстро)…"; docker compose build
 fi
@@ -281,6 +307,10 @@ CERTOK=""
 if [ "$MODE_NOW" = ip ] || [ "$MODE_NOW" = domain ]; then
   say "Жду, пока Let's Encrypt выдаст сертификат (до 2 минут)…"
   ./ydl _waitcert && CERTOK=1
+fi
+
+if [ -z "$CERTOK" ] && { [ "$MODE_NOW" = ip ] || [ "$MODE_NOW" = domain ]; }; then
+  say ""; say "Почему нет сертификата:"; ./ydl _certwhy | sed 's/^/  /'
 fi
 
 URLS="$(./ydl urls)"

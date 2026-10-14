@@ -33,7 +33,7 @@ docker compose build && docker compose up -d
 3. Workflow `Release image` проверит тег, прогонит тесты и соберёт образ `ghcr.io/<владелец>/<репозиторий>` (`linux/amd64`, `linux/arm64`) с метками `0.1.1`, `0.1` и `latest`.
 4. Один раз после первой публикации: GitHub → ваш профиль → Packages → образ → Package settings → **Change visibility → Public**
    (иначе `docker pull` у остальных потребует вход). Сборка для arm64 в этом репозитории автоматически не проверялась, посмотрите результат первого запуска.
-5. Пользователи образа ставят `YDL_IMAGE=ghcr.io/<владелец>/<репозиторий>:latest` (в `.env`) и обновляются `./ydl update`.
+5. Установщик по умолчанию берёт `ghcr.io/ferrykit/ydl:latest` (строка `YDL_IMAGE` в начале `install.sh`; в форке замените владельца). Пользователи обновляются `./ydl update`.
 
 ## Тесты
 `python -m unittest discover -s tests -v` и `bash tests/test_shell.sh`. Они проверяют защиту путей и адресов, вход, CSRF/Host, раздачу файлов, удаление и архивы

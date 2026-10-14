@@ -52,7 +52,14 @@ pub_ip() {
     case "$ip" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) echo "$ip"; return ;; esac
   done
 }
-port_busy() { (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q "[:.]$1 "; }
+own_port() { # порт держит контейнер самого ydl (повторный запуск установщика): это не «чужая программа»
+  command -v docker >/dev/null 2>&1 || return 1
+  for svc in caddy ydl; do
+    docker ps --filter "label=com.docker.compose.service=$svc" --format '{{.Ports}}' 2>/dev/null | grep -q "[:.]$1->" && return 0
+  done
+  return 1
+}
+port_busy() { (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q "[:.]$1 " && ! own_port "$1"; }
 
 dns_v4() { getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u; }
 dns_v6() { getent ahostsv6 "$1" 2>/dev/null | awk '{print $1}' | grep -v '^::ffff:' | sort -u; }
@@ -125,6 +132,33 @@ wait_cert() { # ждём, пока у Caddy появится сертифика�
     sleep 2; i=$((i+1))
   done
   return 1
+}
+
+acme_check() { # 0 — Let's Encrypt доступен по IPv4 (так ходит Caddy из контейнера); 1 — нет; 2 — нечем проверить
+  command -v curl >/dev/null 2>&1 || return 2
+  curl -4 -s -m 8 -o /dev/null https://acme-v02.api.letsencrypt.org/directory || return 1
+}
+
+cert_reason() { # читает лог Caddy со stdin; печатает понятную причину, если узнаёт её (код 0)
+  log="$(cat)"
+  if printf '%s' "$log" | grep -q 'rateLimited'; then
+    when="$(printf '%s' "$log" | grep -o 'retry after [0-9-]* [0-9:]* UTC' | tail -1)"
+    echo "Let's Encrypt временно отказывает: на этот адрес уже выдано слишком много сертификатов (лимит 5 в неделю). ${when:+Можно повторить: ${when#retry after }. }Caddy повторит попытку сам, тома Docker удалять не нужно."
+    return 0
+  fi
+  if printf '%s' "$log" | grep 'acme[^ ]*\(directory\|new-\)' | grep -qE 'timeout|deadline exceeded|no route|unreachable'; then
+    echo "Сервер не может подключиться к Let's Encrypt (таймаут). Похоже, провайдер блокирует исходящие соединения к нему по IPv4. Это не ошибка ydl: попробуйте другой сервер или дата-центр, либо работайте без HTTPS (./ydl https off)."
+    return 0
+  fi
+  if printf '%s' "$log" | grep -qE 'Timeout during connect|Connection refused|Connection reset|unauthorized|Invalid response|no valid A records|NXDOMAIN'; then
+    echo "Let's Encrypt не смог достучаться до сервера снаружи: проверьте, что порты 80 и 443 открыты в файрволе (и у провайдера), а домен указывает на этот сервер."
+    return 0
+  fi
+  return 1
+}
+
+cert_why() { # объяснить, почему нет сертификата (по логу Caddy)
+  $DC logs --no-log-prefix --tail 400 caddy 2>&1 | cert_reason || say "Причину смотрите в логе: $DC logs --tail 50 caddy"
 }
 
 https_apply() { # https_apply РЕЖИМ АДРЕС
@@ -269,6 +303,7 @@ case "$1" in
           say "Жду, пока Let's Encrypt выдаст сертификат (до 2 минут)…"
           if wait_cert; then say "Готово: https://$host (сертификат получен)."; else
             say "Сертификат пока не получен. Частые причины: порты 80/443 закрыты в файрволе провайдера, домен не указывает на этот сервер."
+            cert_why
             say "Подробности: ./ydl logs caddy   (Caddy продолжит попытки сам)"; fi ;;
       *) say "Использование: ./ydl https ip | domain ИМЯ | off"; exit 1 ;;
     esac ;;
@@ -284,6 +319,9 @@ case "$1" in
   _fw) fw_open "$2" ;;
   _waitcert) wait_cert ;;
   _portbusy) port_busy "$2" ;;
+  _acmecheck) acme_check ;;
+  _certwhy) cert_why ;;
+  _certreason) cert_reason ;;
   urls) host_urls ;;
   info)
     say ""

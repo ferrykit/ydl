@@ -30,7 +30,7 @@ Requirements: a Linux server with `sudo`/root and `git` (`sudo apt-get install -
 Log in to the server over ssh and run two commands:
 ```bash
 git clone https://github.com/ferrykit/ydl && cd ydl
-YDL_IMAGE=ghcr.io/ferrykit/ydl:latest ./install.sh
+./install.sh
 ```
 The installer asks a few questions (every one has a sensible default, press Enter), pulls the ready-made image and starts the service.
 At the end the installer prints the URL to open (and the password it generated). Day-to-day: `./ydl help`
